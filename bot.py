@@ -102,26 +102,23 @@ def validate_license_plate(plate: str) -> bool:
 # Функции запросов к API
 # Функции запросов к API с диагностикой
 # Функции запросов к API с правильными URL
+# Функции запросов к API с правильными GET-запросами
 async def make_gibdd_request(query: str, query_type: str) -> str:
     """Запрос к API ГИБДД"""
     try:
-        # ПРАВИЛЬНЫЕ URL для ГИБДД
-        url = "https://parser-api.com/api/gibdd-ru/vin" if query_type == 'vin' else "https://parser-api.com/api/gibdd-ru/regnum"
+        # Формируем параметр в зависимости от типа запроса
+        param_name = "vin" if query_type == 'vin' else "regnum"
+        
+        url = f"https://parser-api.com/parser/gibdd_api/history?key={API_KEYS['gibdd']}&{param_name}={query}"
         
         logger.info(f"ГИБДД запрос: {url}")
-        logger.info(f"ГИБДД ключ: {API_KEYS['gibdd'][:10]}...")
         
         headers = {
-            "Authorization": API_KEYS["gibdd"],
-            "Content-Type": "application/json",
             "User-Agent": "TelegramBot/1.0"
         }
         
-        payload = {query_type: query}
-        
-        response = requests.post(
+        response = requests.get(
             url, 
-            json=payload, 
             headers=headers,
             timeout=15
         )
@@ -169,22 +166,19 @@ async def make_gibdd_request(query: str, query_type: str) -> str:
 async def make_nsis_request(query: str, query_type: str) -> str:
     """Запрос к API НСИС (ОСАГО)"""
     try:
-        # ПРАВИЛЬНЫЕ URL для НСИС
-        url = "https://parser-api.com/api/nsis-osago/vin" if query_type == 'vin' else "https://parser-api.com/api/nsis-osago/regnum"
+        # Формируем параметр в зависимости от типа запроса
+        param_name = "vin" if query_type == 'vin' else "regnum"
+        
+        url = f"https://parser-api.com/parser/osago_api/?key={API_KEYS['nsis']}&{param_name}={query}"
         
         logger.info(f"НСИС запрос: {url}")
         
         headers = {
-            "Authorization": API_KEYS["nsis"],
-            "Content-Type": "application/json",
             "User-Agent": "TelegramBot/1.0"
         }
         
-        payload = {query_type: query}
-        
-        response = requests.post(
+        response = requests.get(
             url,
-            json=payload,
             headers=headers,
             timeout=15
         )
@@ -224,22 +218,19 @@ async def make_nsis_request(query: str, query_type: str) -> str:
 async def make_eaisto_request(query: str, query_type: str) -> str:
     """Запрос к API ЕАИСТО"""
     try:
-        # ПРАВИЛЬНЫЕ URL для ЕАИСТО - используем POST как у других API
-        url = "https://parser-api.com/api/eaisto/vin" if query_type == 'vin' else "https://parser-api.com/api/eaisto/regnum"
+        # Формируем параметр в зависимости от типа запроса
+        param_name = "vin" if query_type == 'vin' else "regnum"
+        
+        url = f"https://parser-api.com/parser/eaisto_mileage_api/?key={API_KEYS['eaisto']}&{param_name}={query}"
         
         logger.info(f"ЕАИСТО запрос: {url}")
         
         headers = {
-            "Authorization": API_KEYS["eaisto"],
-            "Content-Type": "application/json",
             "User-Agent": "TelegramBot/1.0"
         }
         
-        payload = {query_type: query}
-        
-        response = requests.post(
+        response = requests.get(
             url,
-            json=payload,
             headers=headers,
             timeout=15
         )
