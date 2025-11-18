@@ -70,7 +70,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🤖 Добро пожаловать в бот для проверки автомобилей!
 
 Возможности бота:
-• 🚗 Проверка по гос.номеру (ОСАГО и техосмотр)
+• 🚗 Проверка по гос.номеру (ОСАГО)
 • 🔍 Проверка по VIN коду (полная: ГИБДД, ОСАГО, техосмотр)
 
 Выберите способ проверки:
@@ -91,7 +91,7 @@ async def about_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 📋 Доступно:
 • Полная проверка по VIN коду
-• Проверка ОСАГО и техосмотра по гос.номеру
+• Проверка ОСАГО по гос.номеру
     """
     await update.message.reply_text(about_text, reply_markup=get_main_keyboard())
 
@@ -141,60 +141,83 @@ async def make_gibdd_request(query: str, query_type: str, check_type: str = "his
         try:
             data = response.json()
         except json.JSONDecodeError:
-            return f"❌ **ГИБДД ({check_type}):** Неверный формат ответа"
+            return f"❌ ГИБДД ({check_type}): Неверный формат ответа"
         
         if data.get('success'):
             return format_gibdd_response(data, check_type)
         else:
             error_msg = data.get('error', 'Данные не найдены')
-            return f"❌ **ГИБДД ({check_type}):** {error_msg}"
+            return f"❌ ГИБДД ({check_type}): {error_msg}"
             
     except Exception as e:
         logger.error(f"ГИБДД ошибка ({check_type}): {e}")
-        return f"❌ **ГИБДД ({check_type}):** Ошибка запроса"
+        return f"❌ ГИБДД ({check_type}): Ошибка запроса"
 
 def format_gibdd_response(data: dict, check_type: str) -> str:
     """Форматирование ответа от ГИБДД"""
-    type_names = {
-        "history": "📜 История регистраций",
-        "accident": "🚗 Участие в ДТП", 
-        "wanted": "🚨 Нахождение в розыске",
-        "restrict": "🔒 Наложенные ограничения"
-    }
-    
-    result = f"✅ **{type_names[check_type]}:**\n"
-    
     if check_type == "history" and data.get('history'):
         vehicle = data['history']
-        result += f"• Марка: {vehicle.get('model', 'Н/Д')}\n"
-        result += f"• Год: {vehicle.get('year', 'Н/Д')}\n"
-        result += f"• Цвет: {vehicle.get('color', 'Н/Д')}\n"
-        result += f"• Объем: {vehicle.get('engineVolume', 'Н/Д')} см³\n"
-        result += f"• Мощность: {vehicle.get('powerHp', 'Н/Д')} л.с.\n"
+        result = "✅ История регистраций:\n\n"
         
+        # Основные характеристики
+        result += "📋 Основные характеристики:\n"
+        result += f"• Модель: {vehicle.get('model', 'Н/Д')}\n"
+        result += f"• Год выпуска: {vehicle.get('year', 'Н/Д')}\n"
+        result += f"• Цвет: {vehicle.get('color', 'Н/Д')}\n"
+        result += f"• VIN: {vehicle.get('vin', 'Н/Д')}\n"
+        result += f"• Категория: {vehicle.get('category', 'Н/Д')}\n"
+        result += f"• Тип: {vehicle.get('type', 'Н/Д')}\n\n"
+        
+        # Технические характеристики
+        result += "⚙️ Технические характеристики:\n"
+        result += f"• Рабочий объем: {vehicle.get('engineVolume', 'Н/Д')} см³\n"
+        result += f"• Мощность: {vehicle.get('powerHp', 'Н/Д')} л.с. ({vehicle.get('powerKwt', 'Н/Д')} кВт)\n"
+        result += f"• Номер кузова: {vehicle.get('bodyNumber', 'Н/Д')}\n"
+        result += f"• Номер двигателя: {vehicle.get('engineNumber', 'Н/Д')}\n\n"
+        
+        # Данные ПТС
+        if vehicle.get('vehiclePassport'):
+            passport = vehicle['vehiclePassport']
+            result += "📄 Паспорт транспортного средства:\n"
+            result += f"• Номер ПТС: {passport.get('number', 'Н/Д')}\n"
+            result += f"• Выдан: {passport.get('issue', 'Н/Д')}\n\n"
+        
+        # История владения
         owners = vehicle.get('ownershipPeriods', [])
         if owners:
-            result += f"• Владельцев: {len(owners)}\n"
+            result += f"👥 История владения ({len(owners)} владельцев):\n"
+            for i, owner in enumerate(owners, 1):
+                result += f"\n{i}. {owner.get('personType', 'Н/Д')}\n"
+                result += f"   📅 С: {owner.get('from', 'Н/Д')}\n"
+                result += f"   📅 По: {owner.get('to', 'Н/Д')}\n"
+                result += f"   📝 Операция: {owner.get('lastOperation', 'Н/Д')}\n"
+        else:
+            result += "👥 История владения: данные не найдены\n"
+            
+        return result
             
     elif check_type == "accident" and data.get('accidents'):
         accidents = data['accidents']
+        result = "✅ Участие в ДТП:\n"
         result += f"• Найдено ДТП: {len(accidents)}\n"
-        for i, accident in enumerate(accidents[:3], 1):  # Показываем первые 3
+        for i, accident in enumerate(accidents[:3], 1):
             result += f"• ДТП {i}: {accident.get('accidentDatetime', 'Н/Д')}\n"
             
     elif check_type == "wanted" and data.get('searches'):
         searches = data['searches']
+        result = "✅ Нахождение в розыске:\n"
         result += f"• Найдено записей о розыске: {len(searches)}\n"
         for search in searches[:2]:
             result += f"• Регион: {search.get('region', 'Н/Д')}\n"
             
     elif check_type == "restrict" and data.get('restrictions'):
         restrictions = data['restrictions']
+        result = "✅ Наложенные ограничения:\n"
         result += f"• Найдено ограничений: {len(restrictions)}\n"
         for restrict in restrictions[:2]:
             result += f"• Тип: {restrict.get('restriction_name', 'Н/Д')}\n"
     else:
-        result += "• Данные не найдены\n"
+        result = f"✅ {check_type}: Данные не найдены\n"
     
     return result
 
@@ -215,27 +238,27 @@ async def make_nsis_request(query: str, query_type: str) -> str:
         try:
             data = response.json()
         except json.JSONDecodeError:
-            return "❌ **ОСАГО:** Неверный формат ответа"
+            return "❌ ОСАГО: Неверный формат ответа"
         
         if data.get('success'):
             policies = data.get('policies', [])
             if policies:
                 policy = policies[0]
-                result = "✅ **Данные ОСАГО:**\n"
+                result = "✅ Данные ОСАГО:\n"
                 result += f"• Компания: {policy.get('companyName', 'Н/Д')}\n"
                 result += f"• Полис: {policy.get('policySerial', '')} {policy.get('policyNumber', '')}\n"
                 result += f"• Период: {policy.get('startDate', '')} - {policy.get('endDate', '')}\n"
                 result += f"• Статус: {policy.get('status', 'Н/Д')}\n"
                 return result
             else:
-                return "❌ **ОСАГО:** Полисы не найдены"
+                return "❌ ОСАГО: Полисы не найдены"
         else:
             error_msg = data.get('error', 'Данные не найдены')
-            return f"❌ **ОСАГО:** {error_msg}"
+            return f"❌ ОСАГО: {error_msg}"
             
     except Exception as e:
         logger.error(f"НСИС ошибка: {e}")
-        return "❌ **ОСАГО:** Ошибка запроса"
+        return "❌ ОСАГО: Ошибка запроса"
 
 async def make_eaisto_request(query: str, query_type: str) -> str:
     """Запрос к API ЕАИСТО"""
@@ -252,21 +275,21 @@ async def make_eaisto_request(query: str, query_type: str) -> str:
         try:
             data = response.json()
         except json.JSONDecodeError:
-            return "❌ **Техосмотр:** Неверный формат ответа"
+            return "❌ Техосмотр: Неверный формат ответа"
         
         if data.get('kbm_done') and data.get('diagnose_cards'):
             card = data['diagnose_cards'][0]
-            result = "✅ **Данные техосмотра:**\n"
+            result = "✅ Данные техосмотра:\n"
             result += f"• Карта: {card.get('number', 'Н/Д')}\n"
             result += f"• Период: {card.get('startDate', '')} - {card.get('endDate', '')}\n"
             result += f"• Пробег: {card.get('mileage', 'Н/Д')} км\n"
             return result
         else:
-            return "❌ **Техосмотр:** Действующих диагностических карт не найдено"
+            return "❌ Техосмотр: Действующих диагностических карт не найдено"
             
     except Exception as e:
         logger.error(f"ЕАИСТО ошибка: {e}")
-        return "❌ **Техосмотр:** Ошибка запроса"
+        return "❌ Техосмотр: Ошибка запроса"
 
 # Обработка инлайн-кнопок ГИБДД
 async def handle_gibdd_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -283,10 +306,10 @@ async def handle_gibdd_button(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
     
     type_names = {
-        "history": "📜 истории регистраций",
-        "accident": "🚗 участия в ДТП", 
-        "wanted": "🚨 нахождения в розыске",
-        "restrict": "🔒 наложенных ограничений"
+        "history": "истории регистраций",
+        "accident": "участия в ДТП", 
+        "wanted": "нахождения в розыске",
+        "restrict": "наложенных ограничений"
     }
     
     await query.edit_message_text(f"🔍 Запрашиваю данные {type_names[check_type]}...")
@@ -329,16 +352,16 @@ async def process_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Сохраняем VIN для последующих запросов
             context.user_data['current_vin'] = user_input
             
-            # Быстрая базовая проверка
+            # Базовая проверка истории регистраций
             gibdd_result = await make_gibdd_request(user_input, 'vin', 'history')
             nsis_result = await make_nsis_request(user_input, 'vin')
             eaisto_result = await make_eaisto_request(user_input, 'vin')
             
-            result_text = f"📊 **Базовые результаты по VIN:**\n\n"
+            result_text = "📊 Результаты проверки по VIN:\n\n"
             result_text += f"{gibdd_result}\n"
             result_text += f"{nsis_result}\n"
             result_text += f"{eaisto_result}\n\n"
-            result_text += "🔍 **Для детальной проверки выберите тип запроса:**"
+            result_text += "🔍 Для детальной проверки выберите тип запроса:"
             
             await update.message.reply_text(
                 result_text, 
@@ -346,14 +369,12 @@ async def process_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             
         else:  # regnum
-            # Для гос.номера - ОСАГО и техосмотр
+            # Для гос.номера - только ОСАГО
             nsis_result = await make_nsis_request(user_input, 'regnum')
-            eaisto_result = await make_eaisto_request(user_input, 'regnum')
             
-            result_text = f"📊 **Результаты проверки по гос.номеру:**\n\n"
-            result_text += f"{nsis_result}\n"
-            result_text += f"{eaisto_result}\n\n"
-            result_text += "💡 *Для полной проверки используйте VIN код*\n\n"
+            result_text = "📊 Результаты проверки по гос.номеру:\n\n"
+            result_text += f"{nsis_result}\n\n"
+            result_text += "💡 Для полной проверки используйте VIN код\n\n"
             result_text += "➡️ Для нового запроса выберите способ проверки"
             
             await update.message.reply_text(result_text, reply_markup=get_main_keyboard())
@@ -381,21 +402,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "🚗 Проверить по гос.номеру":
         user_data['mode'] = 'regnum'
         await update.message.reply_text(
-            "Введите **гос. номер** автомобиля:\n\n"
-            "Примеры:\n• А123БВ777\n• Е001КХ178\n• Х123ХХ123\n\n"
-            "💡 *Доступны данные ОСАГО и техосмотра*",
-            reply_markup=get_back_keyboard(),
-            parse_mode='Markdown'
+            "Введите гос. номер автомобиля:\n\n"
+            "Примеры:\n• А123ВВ777\n• Е001КХ178\n• Х123ХХ123\n\n"
+            "💡 Доступны данные ОСАГО",
+            reply_markup=get_back_keyboard()
         )
         
     elif text == "🔍 Проверить по VIN коду":
         user_data['mode'] = 'vin'
         await update.message.reply_text(
-            "Введите **VIN код** автомобиля (17 символов):\n\n"
+            "Введите VIN код автомобиля (17 символов):\n\n"
             "Пример: XTA111930B0134057\n\n"
-            "💡 *Доступны полные данные: ГИБДД, ОСАГО, техосмотр*",
-            reply_markup=get_back_keyboard(),
-            parse_mode='Markdown'
+            "💡 Доступны полные данные: ГИБДД, ОСАГО, техосмотр",
+            reply_markup=get_back_keyboard()
         )
         
     elif text == "ℹ️ О боте":
@@ -422,10 +441,13 @@ def main():
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
         
         logger.info("Бот запускается...")
+        print("🤖 Бот запущен! Нажмите Ctrl+C для остановки")
+        
         application.run_polling()
         
     except Exception as e:
         logger.error(f"Ошибка запуска бота: {e}")
+        print(f"❌ Ошибка: {e}")
 
 if __name__ == "__main__":
     main()
