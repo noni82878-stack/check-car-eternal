@@ -93,9 +93,14 @@ def validate_vin(vin: str) -> bool:
 
 def validate_license_plate(plate: str) -> bool:
     """Проверка валидности гос. номера"""
-    plate = plate.upper().replace(' ', '')
-    # Российские номера: буква, 3 цифры, 2 буквы, 2-3 цифры региона
-    if 8 <= len(plate) <= 9:
+    plate = plate.upper().replace(' ', '').replace('-', '')
+    
+    # Российские форматы номеров:
+    # Х999ХХ99 (старый)
+    # Х999ХХ999 (новый)
+    # ХХ99999 (мотоциклы)
+    
+    if len(plate) in [8, 9]:
         return True
     return False
 
@@ -103,13 +108,14 @@ def validate_license_plate(plate: str) -> bool:
 # Функции запросов к API с диагностикой
 # Функции запросов к API с правильными URL
 # Функции запросов к API с правильными GET-запросами
+# Функции запросов к API с правильным кодированием URL
 async def make_gibdd_request(query: str, query_type: str) -> str:
     """Запрос к API ГИБДД"""
     try:
-        # Формируем параметр в зависимости от типа запроса
-        param_name = "vin" if query_type == 'vin' else "regnum"
+        # Кодируем запрос для URL
+        encoded_query = quote(query)
         
-        url = f"https://parser-api.com/parser/gibdd_api/history?key={API_KEYS['gibdd']}&{param_name}={query}"
+        url = f"https://parser-api.com/parser/gibdd_api/history?key={API_KEYS['gibdd']}&{query_type}={encoded_query}"
         
         logger.info(f"ГИБДД запрос: {url}")
         
@@ -120,7 +126,7 @@ async def make_gibdd_request(query: str, query_type: str) -> str:
         response = requests.get(
             url, 
             headers=headers,
-            timeout=15
+            timeout=20
         )
         
         logger.info(f"ГИБДД статус: {response.status_code}")
@@ -166,10 +172,10 @@ async def make_gibdd_request(query: str, query_type: str) -> str:
 async def make_nsis_request(query: str, query_type: str) -> str:
     """Запрос к API НСИС (ОСАГО)"""
     try:
-        # Формируем параметр в зависимости от типа запроса
-        param_name = "vin" if query_type == 'vin' else "regnum"
+        # Кодируем запрос для URL
+        encoded_query = quote(query)
         
-        url = f"https://parser-api.com/parser/osago_api/?key={API_KEYS['nsis']}&{param_name}={query}"
+        url = f"https://parser-api.com/parser/osago_api/?key={API_KEYS['nsis']}&{query_type}={encoded_query}"
         
         logger.info(f"НСИС запрос: {url}")
         
@@ -177,10 +183,11 @@ async def make_nsis_request(query: str, query_type: str) -> str:
             "User-Agent": "TelegramBot/1.0"
         }
         
+        # Увеличиваем таймаут для НСИС до 30 секунд
         response = requests.get(
             url,
             headers=headers,
-            timeout=15
+            timeout=30
         )
         
         logger.info(f"НСИС статус: {response.status_code}")
@@ -218,10 +225,10 @@ async def make_nsis_request(query: str, query_type: str) -> str:
 async def make_eaisto_request(query: str, query_type: str) -> str:
     """Запрос к API ЕАИСТО"""
     try:
-        # Формируем параметр в зависимости от типа запроса
-        param_name = "vin" if query_type == 'vin' else "regnum"
+        # Кодируем запрос для URL
+        encoded_query = quote(query)
         
-        url = f"https://parser-api.com/parser/eaisto_mileage_api/?key={API_KEYS['eaisto']}&{param_name}={query}"
+        url = f"https://parser-api.com/parser/eaisto_mileage_api/?key={API_KEYS['eaisto']}&{query_type}={encoded_query}"
         
         logger.info(f"ЕАИСТО запрос: {url}")
         
@@ -232,7 +239,7 @@ async def make_eaisto_request(query: str, query_type: str) -> str:
         response = requests.get(
             url,
             headers=headers,
-            timeout=15
+            timeout=20
         )
         
         logger.info(f"ЕАИСТО статус: {response.status_code}")
