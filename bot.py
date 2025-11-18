@@ -229,7 +229,7 @@ async def make_eaisto_request(query: str, query_type: str) -> str:
         # Кодируем запрос для URL
         encoded_query = quote(query)
         
-       url = f"https://parser-api.com/parser/eaisto_mileage_api/?key={API_KEYS['eaisto']}&{query_type}={encoded_query}"
+        url = f"https://parser-api.com/parser/eaisto_mileage_api/?key={API_KEYS['eaisto']}&{query_type}={encoded_query}"
         
         logger.info(f"ЕАИСТО запрос: {url}")
         
@@ -360,7 +360,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await start(update, context)
         
     elif text == "🚗 Проверить по гос.номеру":
-    user_data['mode'] = 'regnum'  # БЫЛО: 'reg_num'
+        user_data['mode'] = 'regnum'
         await update.message.reply_text(
             "Введите **гос. номер** автомобиля:\n\n"
             "Примеры:\n"
@@ -391,7 +391,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Используйте кнопки для навигации 👇",
             reply_markup=get_main_keyboard()
         )
-
+        
 # Основная функция
 def main():
     """Запуск бота"""
