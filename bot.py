@@ -96,12 +96,13 @@ def validate_license_plate(plate: str) -> bool:
     plate = plate.upper().replace(' ', '').replace('-', '')
     
     # Российские форматы номеров:
-    # Х999ХХ99 (старый)
-    # Х999ХХ999 (новый)
-    # ХХ99999 (мотоциклы)
+    # Х999ХХ99 (старый) - 8 символов
+    # Х999ХХ999 (новый) - 9 символов  
+    # ХХ99999 (мотоциклы) - 7 символов
     
-    if len(plate) in [8, 9]:
-        return True
+    if 7 <= len(plate) <= 9:
+        # Проверяем, что номер содержит только буквы и цифры
+        return all(c.isalnum() for c in plate)
     return False
 
 # Функции запросов к API
@@ -228,7 +229,7 @@ async def make_eaisto_request(query: str, query_type: str) -> str:
         # Кодируем запрос для URL
         encoded_query = quote(query)
         
-        url = f"https://parser-api.com/parser/eaisto_mileage_api/?key={API_KEYS['eaisto']}&{query_type}={encoded_query}"
+       url = f"https://parser-api.com/parser/eaisto_mileage_api/?key={API_KEYS['eaisto']}&{query_type}={encoded_query}"
         
         logger.info(f"ЕАИСТО запрос: {url}")
         
@@ -306,7 +307,8 @@ async def process_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
         
-    elif query_type == 'reg_num' and not validate_license_plate(user_input):
+    elif query_type == 'regnum' and not validate_license_plate(user_input):  # БЫЛО: 'reg_num'
+
         await update.message.reply_text(
             "❌ Неверный формат гос. номера!\n"
             "Примеры правильных форматов:\n"
@@ -358,7 +360,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await start(update, context)
         
     elif text == "🚗 Проверить по гос.номеру":
-        user_data['mode'] = 'reg_num'
+    user_data['mode'] = 'regnum'  # БЫЛО: 'reg_num'
         await update.message.reply_text(
             "Введите **гос. номер** автомобиля:\n\n"
             "Примеры:\n"
