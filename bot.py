@@ -4,6 +4,8 @@ import requests
 from dotenv import load_dotenv
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+import json
+from urllib.parse import quote
 
 # Загружаем переменные окружения
 load_dotenv()
@@ -98,17 +100,40 @@ def validate_license_plate(plate: str) -> bool:
     return False
 
 # Функции запросов к API
+# Функции запросов к API с диагностикой
 async def make_gibdd_request(query: str, query_type: str) -> str:
-    """Запрос к API ГИБДД"""
+    """Запрос к API ГИБДД с диагностикой"""
     try:
         url = "https://parser-api.com/gibdd-ru/vin" if query_type == 'vin' else "https://parser-api.com/gibdd-ru/regnum"
+        
+        logger.info(f"ГИБДД запрос: {url}")
+        logger.info(f"ГИБДД ключ: {API_KEYS['gibdd'][:10]}...")  # Логируем только начало ключа
+        
+        headers = {
+            "Authorization": API_KEYS["gibdd"],
+            "Content-Type": "application/json",
+            "User-Agent": "TelegramBot/1.0"
+        }
+        
+        payload = {query_type: query}
+        
         response = requests.post(
             url, 
-            json={query_type: query}, 
-            headers={"Authorization": API_KEYS["gibdd"]},
-            timeout=10
+            json=payload, 
+            headers=headers,
+            timeout=15
         )
-        data = response.json()
+        
+        logger.info(f"ГИБДД статус: {response.status_code}")
+        logger.info(f"ГИБДД заголовки: {dict(response.headers)}")
+        logger.info(f"ГИБДД ответ (первые 500 символов): {response.text[:500]}")
+        
+        # Пробуем распарсить JSON
+        try:
+            data = response.json()
+        except json.JSONDecodeError as e:
+            logger.error(f"ГИБДД JSON ошибка: {e}")
+            return "❌ **ГИБДД:** Неверный формат ответа от сервера"
         
         if data.get('success'):
             vehicle = data.get('history', {})
@@ -119,52 +144,109 @@ async def make_gibdd_request(query: str, query_type: str) -> str:
             result += f"• Объем: {vehicle.get('engineVolume', 'Н/Д')} см³\n"
             result += f"• Мощность: {vehicle.get('powerHp', 'Н/Д')} л.с.\n"
             result += f"• VIN: {vehicle.get('vin', 'Н/Д')}\n"
+            
+            # Добавляем информацию о владельцах
+            owners = vehicle.get('ownershipPeriods', [])
+            if owners:
+                result += f"• Владельцев: {len(owners)}\n"
+            
             return result
         else:
-            return "❌ **ГИБДД:** Данные не найдены"
+            error_msg = data.get('error', 'Данные не найдены')
+            return f"❌ **ГИБДД:** {error_msg}"
             
+    except requests.exceptions.Timeout:
+        logger.error("ГИБДД: Таймаут запроса")
+        return "❌ **ГИБДД:** Таймаут запроса"
+    except requests.exceptions.ConnectionError:
+        logger.error("ГИБДД: Ошибка соединения")
+        return "❌ **ГИБДД:** Ошибка соединения"
     except Exception as e:
-        logger.error(f"Ошибка ГИБДД API: {e}")
+        logger.error(f"ГИБДД ошибка: {e}")
         return "❌ **ГИБДД:** Ошибка запроса"
 
 async def make_nsis_request(query: str, query_type: str) -> str:
-    """Запрос к API НСИС (ОСАГО)"""
+    """Запрос к API НСИС (ОСАГО) с диагностикой"""
     try:
         url = "https://parser-api.com/nsis-osago/vin" if query_type == 'vin' else "https://parser-api.com/nsis-osago/regnum"
+        
+        logger.info(f"НСИС запрос: {url}")
+        
+        headers = {
+            "Authorization": API_KEYS["nsis"],
+            "Content-Type": "application/json",
+            "User-Agent": "TelegramBot/1.0"
+        }
+        
+        payload = {query_type: query}
+        
         response = requests.post(
             url,
-            json={query_type: query},
-            headers={"Authorization": API_KEYS["nsis"]},
-            timeout=10
+            json=payload,
+            headers=headers,
+            timeout=15
         )
-        data = response.json()
         
-        if data.get('success') and data.get('policies'):
-            policy = data['policies'][0]
-            result = "✅ **Данные ОСАГО:**\n"
-            result += f"• Компания: {policy.get('companyName', 'Н/Д')}\n"
-            result += f"• Полис: {policy.get('policySerial', '')} {policy.get('policyNumber', '')}\n"
-            result += f"• Период: {policy.get('startDate', '')} - {policy.get('endDate', '')}\n"
-            result += f"• Статус: {policy.get('status', 'Н/Д')}\n"
-            return result
+        logger.info(f"НСИС статус: {response.status_code}")
+        logger.info(f"НСИС ответ (первые 500 символов): {response.text[:500]}")
+        
+        try:
+            data = response.json()
+        except json.JSONDecodeError as e:
+            logger.error(f"НСИС JSON ошибка: {e}")
+            return "❌ **ОСАГО:** Неверный формат ответа от сервера"
+        
+        if data.get('success'):
+            policies = data.get('policies', [])
+            if policies:
+                policy = policies[0]
+                result = "✅ **Данные ОСАГО:**\n"
+                result += f"• Компания: {policy.get('companyName', 'Н/Д')}\n"
+                result += f"• Полис: {policy.get('policySerial', '')} {policy.get('policyNumber', '')}\n"
+                result += f"• Период: {policy.get('startDate', '')} - {policy.get('endDate', '')}\n"
+                result += f"• Статус: {policy.get('status', 'Н/Д')}\n"
+                return result
+            else:
+                return "❌ **ОСАГО:** Полисы не найдены"
         else:
-            return "❌ **ОСАГО:** Действующих полисов не найдено"
+            error_msg = data.get('error', 'Данные не найдены')
+            return f"❌ **ОСАГО:** {error_msg}"
             
+    except requests.exceptions.Timeout:
+        logger.error("НСИС: Таймаут запроса")
+        return "❌ **ОСАГО:** Таймаут запроса"
     except Exception as e:
-        logger.error(f"Ошибка НСИС API: {e}")
+        logger.error(f"НСИС ошибка: {e}")
         return "❌ **ОСАГО:** Ошибка запроса"
 
 async def make_eaisto_request(query: str, query_type: str) -> str:
-    """Запрос к API ЕАИСТО"""
+    """Запрос к API ЕАИСТО с диагностикой"""
     try:
-        url = "https://parser-api.com/eaisto/vin" if query_type == 'vin' else "https://parser-api.com/eaisto/regnum"
-        response = requests.post(
+        # Кодируем запрос для URL
+        encoded_query = quote(query)
+        url = f"https://parser-api.com/eaisto/{query_type}?{query_type}={encoded_query}"
+        
+        logger.info(f"ЕАИСТО запрос: {url}")
+        
+        headers = {
+            "Authorization": API_KEYS["eaisto"],
+            "User-Agent": "TelegramBot/1.0"
+        }
+        
+        response = requests.get(
             url,
-            json={query_type: query},
-            headers={"Authorization": API_KEYS["eaisto"]},
-            timeout=10
+            headers=headers,
+            timeout=15
         )
-        data = response.json()
+        
+        logger.info(f"ЕАИСТО статус: {response.status_code}")
+        logger.info(f"ЕАИСТО ответ (первые 500 символов): {response.text[:500]}")
+        
+        try:
+            data = response.json()
+        except json.JSONDecodeError as e:
+            logger.error(f"ЕАИСТО JSON ошибка: {e}")
+            return "❌ **Техосмотр:** Неверный формат ответа от сервера"
         
         if data.get('kbm_done') and data.get('diagnose_cards'):
             card = data['diagnose_cards'][0]
@@ -176,9 +258,34 @@ async def make_eaisto_request(query: str, query_type: str) -> str:
         else:
             return "❌ **Техосмотр:** Действующих диагностических карт не найдено"
             
+    except requests.exceptions.Timeout:
+        logger.error("ЕАИСТО: Таймаут запроса")
+        return "❌ **Техосмотр:** Таймаут запроса"
     except Exception as e:
-        logger.error(f"Ошибка ЕАИСТО API: {e}")
+        logger.error(f"ЕАИСТО ошибка: {e}")
         return "❌ **Техосмотр:** Ошибка запроса"
+    
+async def check_api(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Проверка работоспособности API"""
+    test_vin = "Z94CB41AAGR323020"  # Тестовый VIN
+    
+    await update.message.reply_text("🔍 Проверяю API ключи...")
+    
+    # Проверяем ГИБДД
+    gibdd_result = await make_gibdd_request(test_vin, 'vin')
+    
+    # Проверяем НСИС  
+    nsis_result = await make_nsis_request(test_vin, 'vin')
+    
+    # Проверяем ЕАИСТО
+    eaisto_result = await make_eaisto_request(test_vin, 'vin')
+    
+    result_text = f"📊 **Результаты проверки API:**\n\n"
+    result_text += f"{gibdd_result}\n\n"
+    result_text += f"{nsis_result}\n\n"
+    result_text += f"{eaisto_result}"
+    
+    await update.message.reply_text(result_text)
 
 # Основная функция обработки запроса
 async def process_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -290,6 +397,7 @@ def main():
         # Добавляем обработчики
         application.add_handler(CommandHandler("start", start))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+        application.add_handler(CommandHandler("checkapi", check_api))
         
         # Запускаем бота
         logger.info("Бот запускается...")
