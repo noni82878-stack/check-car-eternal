@@ -56,11 +56,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🤖 Добро пожаловать в бот для проверки автомобилей!
 
 Возможности бота:
-• Проверка по VIN коду
-• Проверка по гос. номеру
-• Данные из ГИБДД
-• Информация об ОСАГО
-• Данные о техосмотре
+• 🔍 Проверка по VIN коду (полная: ГИБДД, ОСАГО, техосмотр)
+• 🚗 Проверка по гос. номеру (только техосмотр)
 
 Выберите способ проверки:
     """
@@ -74,11 +71,13 @@ async def about_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 Этот бот помогает получить информацию об автомобилях через официальные API:
 
-• ГИБДД - история регистрации, характеристики
-• НСИС - данные о полисах ОСАГО  
-• ЕАИСТО - информация о техосмотре
+• ГИБДД - история регистрации, характеристики (только по VIN)
+• НСИС - данные о полисах ОСАГО (только по VIN)
+• ЕАИСТО - информация о техосмотре (по VIN и гос.номеру)
 
-Бот использует официальные источники данных.
+📋 Доступно:
+• Полная проверка по VIN коду
+• Проверка техосмотра по гос.номеру
     """
     await update.message.reply_text(about_text, reply_markup=get_main_keyboard())
 
@@ -104,7 +103,7 @@ def validate_license_plate(plate: str) -> bool:
         return all(c.isalnum() for c in plate)
     return False
 
-# Базовые функции API (для VIN - работают отлично)
+# Функции запросов к API
 async def make_gibdd_request(query: str, query_type: str) -> str:
     """Запрос к API ГИБДД"""
     try:
@@ -126,18 +125,12 @@ async def make_gibdd_request(query: str, query_type: str) -> str:
         )
         
         logger.info(f"ГИБДД статус: {response.status_code}")
-        logger.info(f"ГИБДД заголовки: {dict(response.headers)}")
-        
-        # Детальное логирование при ошибке 400
-        if response.status_code == 400:
-            logger.error(f"ГИБДД 400 ошибка: {response.text}")
         
         # Пробуем распарсить JSON
         try:
             data = response.json()
         except json.JSONDecodeError as e:
             logger.error(f"ГИБДД JSON ошибка: {e}")
-            logger.error(f"ГИБДД полный ответ: {response.text}")
             return "❌ **ГИБДД:** Неверный формат ответа от сервера"
         
         if data.get('success'):
@@ -192,15 +185,10 @@ async def make_nsis_request(query: str, query_type: str) -> str:
         
         logger.info(f"НСИС статус: {response.status_code}")
         
-        # Детальное логирование при ошибке 400
-        if response.status_code == 400:
-            logger.error(f"НСИС 400 ошибка: {response.text}")
-        
         try:
             data = response.json()
         except json.JSONDecodeError as e:
             logger.error(f"НСИС JSON ошибка: {e}")
-            logger.error(f"НСИС полный ответ: {response.text}")
             return "❌ **ОСАГО:** Неверный формат ответа от сервера"
         
         if data.get('success'):
@@ -252,7 +240,6 @@ async def make_eaisto_request(query: str, query_type: str) -> str:
             data = response.json()
         except json.JSONDecodeError as e:
             logger.error(f"ЕАИСТО JSON ошибка: {e}")
-            logger.error(f"ЕАИСТО полный ответ: {response.text}")
             return "❌ **Техосмотр:** Неверный формат ответа от сервера"
         
         if data.get('kbm_done') and data.get('diagnose_cards'):
@@ -271,153 +258,6 @@ async def make_eaisto_request(query: str, query_type: str) -> str:
     except Exception as e:
         logger.error(f"ЕАИСТО ошибка: {e}")
         return "❌ **Техосмотр:** Ошибка запроса"
-
-# Расширенные функции API для гос.номеров (экспериментальные)
-async def make_gibdd_request_advanced(query: str, query_type: str) -> str:
-    """Расширенный запрос к API ГИБДД с разными параметрами"""
-    try:
-        # Кодируем запрос для URL
-        encoded_query = quote(query)
-        
-        # Для VIN используем стандартный подход
-        if query_type == 'vin':
-            return await make_gibdd_request(query, query_type)
-        
-        # Для гос.номера пробуем разные варианты параметров
-        param_variants = ['regnum', 'reg_number', 'number', 'plate', 'license_plate']
-        
-        for param_name in param_variants:
-            url = f"https://parser-api.com/parser/gibdd_api/history?key={API_KEYS['gibdd']}&{param_name}={encoded_query}"
-            
-            logger.info(f"ГИБДД пробуем параметр '{param_name}': {url}")
-            
-            headers = {
-                "User-Agent": "TelegramBot/1.0"
-            }
-            
-            response = requests.get(
-                url, 
-                headers=headers,
-                timeout=10
-            )
-            
-            logger.info(f"ГИБДД статус с параметром '{param_name}': {response.status_code}")
-            
-            if response.status_code == 200:
-                try:
-                    data = response.json()
-                    if data.get('success'):
-                        vehicle = data.get('history', {})
-                        result = "✅ **Данные ГИБДД:**\n"
-                        result += f"• Марка: {vehicle.get('model', 'Н/Д')}\n"
-                        result += f"• Год: {vehicle.get('year', 'Н/Д')}\n"
-                        result += f"• Цвет: {vehicle.get('color', 'Н/Д')}\n"
-                        result += f"• Объем: {vehicle.get('engineVolume', 'Н/Д')} см³\n"
-                        result += f"• Мощность: {vehicle.get('powerHp', 'Н/Д')} л.с.\n"
-                        result += f"• VIN: {vehicle.get('vin', 'Н/Д')}\n"
-                        
-                        owners = vehicle.get('ownershipPeriods', [])
-                        if owners:
-                            result += f"• Владельцев: {len(owners)}\n"
-                        
-                        logger.info(f"ГИБДД УСПЕХ с параметром '{param_name}'!")
-                        return result
-                except json.JSONDecodeError:
-                    continue
-            elif response.status_code == 400:
-                logger.info(f"ГИБДД 400 с параметром '{param_name}': {response.text[:200]}")
-        
-        # Если ни один вариант не сработал
-        return "❌ **ГИБДД:** Не удалось получить данные по гос.номеру"
-            
-    except Exception as e:
-        logger.error(f"ГИБДД расширенный запрос ошибка: {e}")
-        return "❌ **ГИБДД:** Ошибка запроса"
-
-async def make_nsis_request_advanced(query: str, query_type: str) -> str:
-    """Расширенный запрос к API НСИС с разными параметрами"""
-    try:
-        encoded_query = quote(query)
-        
-        # Для VIN используем стандартный подход
-        if query_type == 'vin':
-            return await make_nsis_request(query, query_type)
-        
-        # Для гос.номера пробуем разные варианты параметров
-        param_variants = ['regnum', 'reg_number', 'number', 'plate', 'license_plate']
-        
-        for param_name in param_variants:
-            url = f"https://parser-api.com/parser/osago_api/?key={API_KEYS['nsis']}&{param_name}={encoded_query}"
-            
-            logger.info(f"НСИС пробуем параметр '{param_name}': {url}")
-            
-            headers = {
-                "User-Agent": "TelegramBot/1.0"
-            }
-            
-            response = requests.get(
-                url,
-                headers=headers,
-                timeout=10
-            )
-            
-            logger.info(f"НСИС статус с параметром '{param_name}': {response.status_code}")
-            
-            if response.status_code == 200:
-                try:
-                    data = response.json()
-                    if data.get('success'):
-                        policies = data.get('policies', [])
-                        if policies:
-                            policy = policies[0]
-                            result = "✅ **Данные ОСАГО:**\n"
-                            result += f"• Компания: {policy.get('companyName', 'Н/Д')}\n"
-                            result += f"• Полис: {policy.get('policySerial', '')} {policy.get('policyNumber', '')}\n"
-                            result += f"• Период: {policy.get('startDate', '')} - {policy.get('endDate', '')}\n"
-                            result += f"• Статус: {policy.get('status', 'Н/Д')}\n"
-                            logger.info(f"НСИС УСПЕХ с параметром '{param_name}'!")
-                            return result
-                except json.JSONDecodeError:
-                    continue
-            elif response.status_code == 400:
-                logger.info(f"НСИС 400 с параметром '{param_name}': {response.text[:200]}")
-        
-        return "❌ **ОСАГО:** Не удалось получить данные по гос.номеру"
-            
-    except Exception as e:
-        logger.error(f"НСИС расширенный запрос ошибка: {e}")
-        return "❌ **ОСАГО:** Ошибка запроса"
-
-# Команда для тестирования гос.номеров
-async def test_plate_formats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Тестирование разных форматов гос.номеров"""
-    test_plates = [
-        "А123БВ777",  # Кириллица
-        "A123BC777",  # Латиница  
-        "Е001КХ178",  # Кириллица с нулями
-        "E001KX178",  # Латиница с нулями
-        "Х123ХХ123",  # Кириллица новый формат
-        "X123XX123",  # Латиница новый формат
-        "B908EE35",   # Ваш тестовый номер
-    ]
-    
-    await update.message.reply_text("🧪 Начинаю тестирование гос.номеров...")
-    
-    for plate in test_plates:
-        await update.message.reply_text(f"🔍 Тестируем: {plate}")
-        
-        gibdd_result = await make_gibdd_request_advanced(plate, 'regnum')
-        nsis_result = await make_nsis_request_advanced(plate, 'regnum')
-        eaisto_result = await make_eaisto_request(plate, 'regnum')
-        
-        result_text = f"📊 **Результаты для {plate}:**\n\n"
-        result_text += f"{gibdd_result}\n"
-        result_text += f"{nsis_result}\n"
-        result_text += f"{eaisto_result}\n"
-        
-        await update.message.reply_text(result_text)
-    
-    await update.message.reply_text("✅ Тестирование завершено!")
 
 # Основная функция обработки запроса
 async def process_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -452,21 +292,27 @@ async def process_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     try:
-        # Для VIN используем стандартные функции, для гос.номера - расширенные
         if query_type == 'vin':
+            # Для VIN - полная проверка всех API
             gibdd_result = await make_gibdd_request(user_input, query_type)
             nsis_result = await make_nsis_request(user_input, query_type)
-        else:
-            gibdd_result = await make_gibdd_request_advanced(user_input, query_type)
-            nsis_result = await make_nsis_request_advanced(user_input, query_type)
+            eaisto_result = await make_eaisto_request(user_input, query_type)
+            
+            result_text = f"📊 **Результаты проверки по VIN:**\n\n"
+            result_text += f"{gibdd_result}\n\n"
+            result_text += f"{nsis_result}\n\n" 
+            result_text += f"{eaisto_result}\n\n"
+            
+        else:  # regnum
+            # Для гос.номера - только техосмотр (ЕАИСТО)
+            eaisto_result = await make_eaisto_request(user_input, query_type)
+            
+            result_text = f"📊 **Результаты проверки по гос.номеру:**\n\n"
+            result_text += "❌ **ГИБДД:** Данные по гос.номеру недоступны\n\n"
+            result_text += "❌ **ОСАГО:** Данные по гос.номеру недоступны\n\n"
+            result_text += f"{eaisto_result}\n\n"
+            result_text += "💡 *Для полной проверки используйте VIN код*\n\n"
         
-        eaisto_result = await make_eaisto_request(user_input, query_type)
-        
-        # Формируем итоговый ответ
-        result_text = f"📊 **Результаты проверки:**\n\n"
-        result_text += f"{gibdd_result}\n\n"
-        result_text += f"{nsis_result}\n\n" 
-        result_text += f"{eaisto_result}\n\n"
         result_text += "➡️ Для нового запроса выберите способ проверки"
         
         await update.message.reply_text(result_text, reply_markup=get_main_keyboard())
@@ -498,7 +344,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Примеры:\n"
             "• А123БВ777\n"  
             "• Е001КХ178\n"
-            "• Х123ХХ123",
+            "• Х123ХХ123\n\n"
+            "💡 *Доступны только данные техосмотра*",
             reply_markup=get_back_keyboard(),
             parse_mode='Markdown'
         )
@@ -507,7 +354,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data['mode'] = 'vin'
         await update.message.reply_text(
             "Введите **VIN код** автомобиля (17 символов):\n\n"
-            "Пример: XTA111930B0134057",
+            "Пример: XTA111930B0134057\n\n"
+            "💡 *Доступны полные данные: ГИБДД, ОСАГО, техосмотр*",
             reply_markup=get_back_keyboard(),
             parse_mode='Markdown'
         )
@@ -533,8 +381,6 @@ def main():
         
         # Добавляем обработчики
         application.add_handler(CommandHandler("start", start))
-        application.add_handler(CommandHandler("checkapi", test_plate_formats))  # Для тестирования
-        application.add_handler(CommandHandler("testplates", test_plate_formats))  # Для тестирования
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
         
         # Запускаем бота
