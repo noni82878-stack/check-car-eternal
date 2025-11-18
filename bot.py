@@ -101,13 +101,15 @@ def validate_license_plate(plate: str) -> bool:
 
 # Функции запросов к API
 # Функции запросов к API с диагностикой
+# Функции запросов к API с правильными URL
 async def make_gibdd_request(query: str, query_type: str) -> str:
-    """Запрос к API ГИБДД с диагностикой"""
+    """Запрос к API ГИБДД"""
     try:
-        url = "https://parser-api.com/gibdd-ru/vin" if query_type == 'vin' else "https://parser-api.com/gibdd-ru/regnum"
+        # ПРАВИЛЬНЫЕ URL для ГИБДД
+        url = "https://parser-api.com/api/gibdd-ru/vin" if query_type == 'vin' else "https://parser-api.com/api/gibdd-ru/regnum"
         
         logger.info(f"ГИБДД запрос: {url}")
-        logger.info(f"ГИБДД ключ: {API_KEYS['gibdd'][:10]}...")  # Логируем только начало ключа
+        logger.info(f"ГИБДД ключ: {API_KEYS['gibdd'][:10]}...")
         
         headers = {
             "Authorization": API_KEYS["gibdd"],
@@ -125,14 +127,13 @@ async def make_gibdd_request(query: str, query_type: str) -> str:
         )
         
         logger.info(f"ГИБДД статус: {response.status_code}")
-        logger.info(f"ГИБДД заголовки: {dict(response.headers)}")
-        logger.info(f"ГИБДД ответ (первые 500 символов): {response.text[:500]}")
         
         # Пробуем распарсить JSON
         try:
             data = response.json()
         except json.JSONDecodeError as e:
             logger.error(f"ГИБДД JSON ошибка: {e}")
+            logger.error(f"ГИБДД ответ: {response.text[:500]}")
             return "❌ **ГИБДД:** Неверный формат ответа от сервера"
         
         if data.get('success'):
@@ -166,9 +167,10 @@ async def make_gibdd_request(query: str, query_type: str) -> str:
         return "❌ **ГИБДД:** Ошибка запроса"
 
 async def make_nsis_request(query: str, query_type: str) -> str:
-    """Запрос к API НСИС (ОСАГО) с диагностикой"""
+    """Запрос к API НСИС (ОСАГО)"""
     try:
-        url = "https://parser-api.com/nsis-osago/vin" if query_type == 'vin' else "https://parser-api.com/nsis-osago/regnum"
+        # ПРАВИЛЬНЫЕ URL для НСИС
+        url = "https://parser-api.com/api/nsis-osago/vin" if query_type == 'vin' else "https://parser-api.com/api/nsis-osago/regnum"
         
         logger.info(f"НСИС запрос: {url}")
         
@@ -188,12 +190,12 @@ async def make_nsis_request(query: str, query_type: str) -> str:
         )
         
         logger.info(f"НСИС статус: {response.status_code}")
-        logger.info(f"НСИС ответ (первые 500 символов): {response.text[:500]}")
         
         try:
             data = response.json()
         except json.JSONDecodeError as e:
             logger.error(f"НСИС JSON ошибка: {e}")
+            logger.error(f"НСИС ответ: {response.text[:500]}")
             return "❌ **ОСАГО:** Неверный формат ответа от сервера"
         
         if data.get('success'):
@@ -220,32 +222,35 @@ async def make_nsis_request(query: str, query_type: str) -> str:
         return "❌ **ОСАГО:** Ошибка запроса"
 
 async def make_eaisto_request(query: str, query_type: str) -> str:
-    """Запрос к API ЕАИСТО с диагностикой"""
+    """Запрос к API ЕАИСТО"""
     try:
-        # Кодируем запрос для URL
-        encoded_query = quote(query)
-        url = f"https://parser-api.com/eaisto/{query_type}?{query_type}={encoded_query}"
+        # ПРАВИЛЬНЫЕ URL для ЕАИСТО - используем POST как у других API
+        url = "https://parser-api.com/api/eaisto/vin" if query_type == 'vin' else "https://parser-api.com/api/eaisto/regnum"
         
         logger.info(f"ЕАИСТО запрос: {url}")
         
         headers = {
             "Authorization": API_KEYS["eaisto"],
+            "Content-Type": "application/json",
             "User-Agent": "TelegramBot/1.0"
         }
         
-        response = requests.get(
+        payload = {query_type: query}
+        
+        response = requests.post(
             url,
+            json=payload,
             headers=headers,
             timeout=15
         )
         
         logger.info(f"ЕАИСТО статус: {response.status_code}")
-        logger.info(f"ЕАИСТО ответ (первые 500 символов): {response.text[:500]}")
         
         try:
             data = response.json()
         except json.JSONDecodeError as e:
             logger.error(f"ЕАИСТО JSON ошибка: {e}")
+            logger.error(f"ЕАИСТО ответ: {response.text[:500]}")
             return "❌ **Техосмотр:** Неверный формат ответа от сервера"
         
         if data.get('kbm_done') and data.get('diagnose_cards'):
